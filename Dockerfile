@@ -1,7 +1,14 @@
 FROM python:3.11-slim
 
+# Install system build tools (C++ compiler required for compiling native dependencies)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt-get/lists/*
+
 # Install uv for fast dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+ENV UV_PYTHON=python3.11
 
 WORKDIR /app
 
