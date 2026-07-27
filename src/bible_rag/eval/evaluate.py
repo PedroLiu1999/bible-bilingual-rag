@@ -1,22 +1,25 @@
 import os
-
+import json
+import pandas as pd
 from datasets import Dataset
 from ragas import evaluate
+from ragas.run_config import RunConfig
 from ragas.metrics import (
+    faithfulness,
     answer_relevancy,
     context_precision,
     context_recall,
-    faithfulness,
 )
 
 from bible_rag.agent.rag_agent import BibleRAGAgent
 from bible_rag.config import (
-    BASE_DIR,
-    DEFAULT_LLM_MODEL,
     LLM_PROVIDER,
+    DEFAULT_LLM_MODEL,
     NVIDIA_API_KEY,
-    OLLAMA_BASE_URL,
     OPENAI_API_KEY,
+    OLLAMA_BASE_URL,
+    EMBEDDING_MODEL,
+    BASE_DIR
 )
 
 # Golden Dataset for Bilingual Theological Benchmarking
@@ -39,52 +42,53 @@ GOLDEN_DATASET = [
     },
 ]
 
-
 def get_eval_models():
-    """Dynamically initialize LLM & Embeddings evaluators based on LLM_PROVIDER."""
+    """Initialize evaluation LLM and local HuggingFace embeddings."""
     provider = LLM_PROVIDER.lower()
 
+    # 1. Always use HuggingFaceEmbeddings locally to avoid Ollama 501 embedding errors
+    from langchain_huggingface import HuggingFaceEmbeddings
+    print(f"📦 Evaluator Embeddings: HuggingFace [{EMBEDDING_MODEL}]")
+    eval_embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+    # 2. Select LLM Judge based on LLM_PROVIDER
     if provider == "ollama":
-        from langchain_ollama import ChatOllama, OllamaEmbeddings
-        print(f"🤖 Configured Evaluator: Local Ollama [{DEFAULT_LLM_MODEL}]")
-        eval_llm = ChatOllama(model=DEFAULT_LLM_MODEL, base_url=OLLAMA_BASE_URL,format="json", temperature=0.0)
-        eval_embeddings = OllamaEmbeddings(model=DEFAULT_LLM_MODEL, base_url=OLLAMA_BASE_URL)
+        from langchain_ollama import ChatOllama
+        print(f"🤖 Evaluator LLM: Local Ollama [{DEFAULT_LLM_MODEL}] (Single Worker Mode)")
+        eval_llm = ChatOllama(
+            model=DEFAULT_LLM_MODEL,
+            base_url=OLLAMA_BASE_URL,
+            format="json",
+            temperature=0.0,
+            timeout=600
+        )
         return eval_llm, eval_embeddings
 
     elif provider == "openai":
-        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+        from langchain_openai import ChatOpenAI
         api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("❌ Missing OPENAI_API_KEY for Ragas evaluation!")
-        print(f"⚡ Configured Evaluator: OpenAI [{DEFAULT_LLM_MODEL}]")
+        print(f"⚡ Evaluator LLM: OpenAI [{DEFAULT_LLM_MODEL}]")
         eval_llm = ChatOpenAI(model=DEFAULT_LLM_MODEL, api_key=api_key, temperature=0.0)
-        eval_embeddings = OpenAIEmbeddings(api_key=api_key)
         return eval_llm, eval_embeddings
 
-    else: # Default to NVIDIA NIM
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
+    else: # Default: NVIDIA NIM
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA
         api_key = NVIDIA_API_KEY or os.getenv("NVIDIA_API_KEY")
         if not api_key:
-            raise ValueError("❌ Missing NVIDIA_API_KEY in .env file! Set NVIDIA_API_KEY or switch LLM_PROVIDER in .env.")
-        print(f"🚀 Configured Evaluator: NVIDIA NIM [{DEFAULT_LLM_MODEL}]")
+            raise ValueError("❌ Missing NVIDIA_API_KEY in .env file!")
+        print(f"🚀 Evaluator LLM: NVIDIA NIM [{DEFAULT_LLM_MODEL}]")
         eval_llm = ChatNVIDIA(model=DEFAULT_LLM_MODEL, api_key=api_key, temperature=0.0)
-        eval_embeddings = NVIDIAEmbeddings(model="nvidia/nv-embed-v1", api_key=api_key)
         return eval_llm, eval_embeddings
-
 
 def run_ragas_evaluation():
     print("🚀 Initializing Ragas Evaluation Harness...")
 
-    # 1. Instantiate Evaluation Judge Models according to provider
     eval_llm, eval_embeddings = get_eval_models()
-
-    # 2. Run live Agent against the Golden Benchmark
     agent = BibleRAGAgent()
 
-    questions = []
-    answers = []
-    contexts = []
-    ground_truths = []
+    questions, answers, contexts, ground_truths = [], [], [], []
 
     print("\n⏳ Executing RAG Agent against Golden Dataset...")
     try:
@@ -106,7 +110,6 @@ def run_ragas_evaluation():
     finally:
         agent.close()
 
-    # 3. Construct HuggingFace Dataset required by Ragas
     data_dict = {
         "question": questions,
         "answer": answers,
@@ -115,29 +118,25 @@ def run_ragas_evaluation():
     }
     dataset = Dataset.from_dict(data_dict)
 
-    # 4. Configure metrics with evaluator LLM & embeddings
-    metrics = [
-        faithfulness,
-        answer_relevancy,
-        context_precision,
-        context_recall,
-    ]
+    metrics = [faithfulness, answer_relevancy, context_precision, context_recall]
 
     for metric in metrics:
         metric.llm = eval_llm
-        if hasattr(metric, "embeddings") and metric.embeddings is None:
+        if hasattr(metric, "embeddings"):
             metric.embeddings = eval_embeddings
 
-    # 5. Execute Ragas Evaluation
-    print("\n📊 Computing Ragas Metrics (Faithfulness, Relevancy, Precision, Recall)...")
+    print("\n📊 Computing Ragas Metrics (Sequential Mode)...")
+
+    run_config = RunConfig(max_workers=1, max_retries=3, timeout=600)
+
     result = evaluate(
         dataset=dataset,
         metrics=metrics,
         llm=eval_llm,
         embeddings=eval_embeddings,
+        run_config=run_config
     )
 
-    # 6. Save & Display Results
     df = result.to_pandas()
     eval_output_dir = BASE_DIR / "eval_results"
     eval_output_dir.mkdir(exist_ok=True)
@@ -151,7 +150,6 @@ def run_ragas_evaluation():
     print(result)
     print("=" * 60)
     print(f"\n Detailed report saved to: {csv_path}")
-
 
 if __name__ == "__main__":
     run_ragas_evaluation()
