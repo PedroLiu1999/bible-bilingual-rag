@@ -1,10 +1,12 @@
 ﻿import re
+from typing import Any
+
 import torch
-from typing import Dict, Any, List
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 from sentence_transformers import SentenceTransformer
-from bible_rag.config import DB_DIR, COLLECTION_NAME, EMBEDDING_MODEL
+
+from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL
 
 BOOK_MAP = {
     "gen": "Genesis", "創": "Genesis", "創世記": "Genesis",
@@ -30,7 +32,7 @@ class BibleRetriever:
     def __enter__(self): return self
     def __exit__(self, exc_type, exc_val, exc_tb): self.close()
 
-    def parse_verse_reference(self, query: str) -> Dict[str, Any] | None:
+    def parse_verse_reference(self, query: str) -> dict[str, Any] | None:
         pattern = r"([1-3]?\s*[\u4e00-\u9fa5a-zA-Z]+)\s*(\d+)[:：](\d+)"
         match = re.search(pattern, query)
         if not match: return None
@@ -41,7 +43,7 @@ class BibleRetriever:
 
         return {"book": canonical_book, "chapter": int(chapter), "verse": int(verse)}
 
-    def retrieve(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def retrieve(self, query: str, top_k: int = 3) -> list[dict[str, Any]]:
         ref = self.parse_verse_reference(query)
         if ref:
             scroll_res = self.client.scroll(

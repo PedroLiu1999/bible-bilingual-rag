@@ -1,7 +1,9 @@
 ﻿import sys
+
+from bible_rag.agent.rag_agent import BibleRAGAgent
 from bible_rag.data.ingest import process_and_align
 from bible_rag.vectorstore.indexer import run_indexing
-from bible_rag.agent.rag_agent import BibleRAGAgent
+
 
 def main():
     print("=== Bilingual Bible RAG Agent ===")

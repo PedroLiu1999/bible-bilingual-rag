@@ -1,14 +1,22 @@
 ﻿import os
-from typing import List, Dict, Any, TypedDict
+from typing import Any, TypedDict
+
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
+
+from bible_rag.config import (
+    DEFAULT_LLM_MODEL,
+    LLM_PROVIDER,
+    NVIDIA_API_KEY,
+    OLLAMA_BASE_URL,
+    OPENAI_API_KEY,
+)
 from bible_rag.vectorstore.retriever import BibleRetriever
-from bible_rag.config import DEFAULT_LLM_MODEL, NVIDIA_API_KEY
+
 
 class AgentState(TypedDict):
     query: str
-    retrieved_verses: List[Dict[str, Any]]
+    retrieved_verses: list[dict[str, Any]]
     response: str
 
 SYSTEM_PROMPT = """You are an expert bilingual theological AI assistant specializing in comparing the English King James Version (KJV) and the Chinese Union Version (CUV / 和合本).
@@ -24,24 +32,41 @@ Context:
 """
 
 class BibleRAGAgent:
-    def __init__(self, model_name: str = DEFAULT_LLM_MODEL):
-        api_key = NVIDIA_API_KEY or os.getenv("NVIDIA_API_KEY")
-        if not api_key or "YOUR_NVIDIA_API_KEY" in api_key:
-            raise ValueError("❌ Missing valid NVIDIA_API_KEY in .env file!")
-
+    def __init__(self, provider: str = LLM_PROVIDER, model_name: str = DEFAULT_LLM_MODEL):
         self.retriever = BibleRetriever()
-        self.llm = ChatNVIDIA(
-            model=model_name,
-            api_key=api_key,
-            temperature=0.2
-        )
+        self.provider = provider.lower()
+        self.model_name = model_name
+
+        if self.provider == "ollama":
+            from langchain_ollama import ChatOllama
+            print(f"🤖 Initializing Local Ollama LLM [{self.model_name}] at {OLLAMA_BASE_URL}...")
+            self.llm = ChatOllama(
+                model=self.model_name,
+                base_url=OLLAMA_BASE_URL,
+                temperature=0.2
+            )
+        elif self.provider == "openai":
+            from langchain_openai import ChatOpenAI
+            api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("❌ Missing OPENAI_API_KEY in .env file!")
+            print(f"⚡ Initializing OpenAI LLM [{self.model_name}]...")
+            self.llm = ChatOpenAI(model=self.model_name, temperature=0.2, api_key=api_key)
+        else: # Default: NVIDIA NIM
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+            api_key = NVIDIA_API_KEY or os.getenv("NVIDIA_API_KEY")
+            if not api_key:
+                raise ValueError("❌ Missing NVIDIA_API_KEY in .env file!")
+            print(f"🚀 Initializing NVIDIA NIM LLM [{self.model_name}]...")
+            self.llm = ChatNVIDIA(model=self.model_name, api_key=api_key, temperature=0.2)
+
         self.graph = self._build_graph()
 
-    def _retrieve_node(self, state: AgentState) -> Dict[str, Any]:
-        verses = self.retriever.retrieve(state["query"], top_k=10)
+    def _retrieve_node(self, state: AgentState) -> dict[str, Any]:
+        verses = self.retriever.retrieve(state["query"], top_k=3)
         return {"retrieved_verses": verses}
 
-    def _generate_node(self, state: AgentState) -> Dict[str, Any]:
+    def _generate_node(self, state: AgentState) -> dict[str, Any]:
         verses = state["retrieved_verses"]
         context_blocks = [
             f"Reference: {v['book_name_en']} ({v['book_name_zh']}) {v['chapter']}:{v['verse']}\nKJV: {v['text_kjv']}\nCUV: {v['text_cuv']}"

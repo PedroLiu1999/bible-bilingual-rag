@@ -1,9 +1,10 @@
 ﻿import json
-from pathlib import Path
+
 import httpx
 from pydantic import BaseModel
 from tqdm import tqdm
-from bible_rag.config import RAW_DIR, PROCESSED_DIR, PROCESSED_FILE
+
+from bible_rag.config import PROCESSED_DIR, PROCESSED_FILE, RAW_DIR
 
 KJV_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json"
 CUV_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/zh_cuv.json"

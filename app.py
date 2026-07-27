@@ -1,8 +1,9 @@
 # app.py
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
 
 from bible_rag.agent.rag_agent import BibleRAGAgent
 

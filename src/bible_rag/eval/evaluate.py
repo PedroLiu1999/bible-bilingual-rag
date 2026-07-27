@@ -1,18 +1,23 @@
-# src/bible_rag/eval/evaluate.py
-import json
-import pandas as pd
+import os
+
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import (
-    faithfulness,
     answer_relevancy,
     context_precision,
     context_recall,
+    faithfulness,
 )
-from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
 
 from bible_rag.agent.rag_agent import BibleRAGAgent
-from bible_rag.config import NVIDIA_API_KEY, DEFAULT_LLM_MODEL, BASE_DIR
+from bible_rag.config import (
+    BASE_DIR,
+    DEFAULT_LLM_MODEL,
+    LLM_PROVIDER,
+    NVIDIA_API_KEY,
+    OLLAMA_BASE_URL,
+    OPENAI_API_KEY,
+)
 
 # Golden Dataset for Bilingual Theological Benchmarking
 GOLDEN_DATASET = [
@@ -35,24 +40,45 @@ GOLDEN_DATASET = [
 ]
 
 
+def get_eval_models():
+    """Dynamically initialize LLM & Embeddings evaluators based on LLM_PROVIDER."""
+    provider = LLM_PROVIDER.lower()
+
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama, OllamaEmbeddings
+        print(f"🤖 Configured Evaluator: Local Ollama [{DEFAULT_LLM_MODEL}]")
+        eval_llm = ChatOllama(model=DEFAULT_LLM_MODEL, base_url=OLLAMA_BASE_URL,format="json", temperature=0.0)
+        eval_embeddings = OllamaEmbeddings(model=DEFAULT_LLM_MODEL, base_url=OLLAMA_BASE_URL)
+        return eval_llm, eval_embeddings
+
+    elif provider == "openai":
+        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+        api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("❌ Missing OPENAI_API_KEY for Ragas evaluation!")
+        print(f"⚡ Configured Evaluator: OpenAI [{DEFAULT_LLM_MODEL}]")
+        eval_llm = ChatOpenAI(model=DEFAULT_LLM_MODEL, api_key=api_key, temperature=0.0)
+        eval_embeddings = OpenAIEmbeddings(api_key=api_key)
+        return eval_llm, eval_embeddings
+
+    else: # Default to NVIDIA NIM
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
+        api_key = NVIDIA_API_KEY or os.getenv("NVIDIA_API_KEY")
+        if not api_key:
+            raise ValueError("❌ Missing NVIDIA_API_KEY in .env file! Set NVIDIA_API_KEY or switch LLM_PROVIDER in .env.")
+        print(f"🚀 Configured Evaluator: NVIDIA NIM [{DEFAULT_LLM_MODEL}]")
+        eval_llm = ChatNVIDIA(model=DEFAULT_LLM_MODEL, api_key=api_key, temperature=0.0)
+        eval_embeddings = NVIDIAEmbeddings(model="nvidia/nv-embed-v1", api_key=api_key)
+        return eval_llm, eval_embeddings
+
+
 def run_ragas_evaluation():
     print("🚀 Initializing Ragas Evaluation Harness...")
 
-    if not NVIDIA_API_KEY:
-        raise ValueError("❌ Missing NVIDIA_API_KEY in environment!")
+    # 1. Instantiate Evaluation Judge Models according to provider
+    eval_llm, eval_embeddings = get_eval_models()
 
-    # 1. Instantiate Evaluation Judge Models via NVIDIA NIM
-    eval_llm = ChatNVIDIA(
-        model=DEFAULT_LLM_MODEL,
-        api_key=NVIDIA_API_KEY,
-        temperature=0.0
-    )
-    eval_embeddings = NVIDIAEmbeddings(
-        model="nvidia/nv-embed-v1",
-        api_key=NVIDIA_API_KEY
-    )
-
-    # 2. Run your live Agent on the Golden Benchmark
+    # 2. Run live Agent against the Golden Benchmark
     agent = BibleRAGAgent()
 
     questions = []
@@ -66,7 +92,6 @@ def run_ragas_evaluation():
             q = item["question"]
             gt = item["ground_truth"]
 
-            # Retrieve context and generate response
             verses = agent.retriever.retrieve(q, top_k=3)
             formatted_contexts = [
                 f"{v['book_name_en']} {v['chapter']}:{v['verse']} - KJV: {v['text_kjv']} | CUV: {v['text_cuv']}"
@@ -90,7 +115,7 @@ def run_ragas_evaluation():
     }
     dataset = Dataset.from_dict(data_dict)
 
-    # 4. Configure metrics with explicit evaluator LLMs
+    # 4. Configure metrics with evaluator LLM & embeddings
     metrics = [
         faithfulness,
         answer_relevancy,
