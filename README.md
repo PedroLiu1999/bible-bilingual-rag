@@ -103,6 +103,16 @@ uv run main.py
 
 ---
 
+### Step 4: Run Automated Ragas Quality Evaluation
+
+To run model-graded benchmark evaluations for Faithfulness, Answer Relevancy, Context Recall, and Context Precision:
+
+```powershell
+uv run main.py --eval
+```
+
+---
+
 ## 📁 Deep Modular Directory Structure
 
 ```text
