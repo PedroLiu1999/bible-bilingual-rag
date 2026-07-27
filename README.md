@@ -1,8 +1,8 @@
 # 📖 Bilingual Bible RAG Agent (CUV & KJV)
 
-A production-grade Retrieval-Augmented Generation (RAG) agent for exploring and querying the Bible simultaneously in **Chinese (Chinese Union Version - CUV / 和合本)** and **English (King James Version - KJV)**.
+A Retrieval-Augmented Generation (RAG) agent for exploring and querying the Bible simultaneously in **Chinese (Chinese Union Version - CUV / 和合本)** and **English (King James Version - KJV)**.
 
-Built to demonstrate senior AI engineering patterns:
+Built to demonstrate AI engineering patterns:
 - **Verse-Atomic Cross-Lingual Alignment:** Prevents mid-sentence verse splitting by indexing complete, aligned CUV/KJV records.
 - **Hybrid Intent Routing:** Uses regex for deterministic exact verse lookups (0ms, 100% precision) with automatic fallback to dense vector search for conceptual/topical queries.
 - **GPU-Accelerated Vector Indexing:** PyTorch CUDA-backed sentence embeddings (`paraphrase-multilingual-mpnet-base-v2`) inside a persistent local **Qdrant** vector store.
