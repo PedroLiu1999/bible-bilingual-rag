@@ -7,8 +7,7 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL, PROCESSED_FILE
-
+from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL, PROCESSED_FILE, QDRANT_URL, QDRANT_API_KEY
 BATCH_SIZE = 512
 
 def run_indexing():
@@ -21,7 +20,10 @@ def run_indexing():
     with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
         verses = json.load(f)
 
-    client = QdrantClient(path=str(DB_DIR))
+    if QDRANT_URL:
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    else:
+        client = QdrantClient(path=str(DB_DIR))
     model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
     if client.collection_exists(COLLECTION_NAME):

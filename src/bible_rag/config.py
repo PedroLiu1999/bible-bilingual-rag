@@ -37,3 +37,7 @@ if not DEFAULT_LLM_MODEL:
         DEFAULT_LLM_MODEL = "gpt-4o-mini"
     else:
         DEFAULT_LLM_MODEL = "meta/llama-3.3-70b-instruct"
+
+# QDRANT Configuration
+QDRANT_URL = os.getenv("QDRANT_URL", None)
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)

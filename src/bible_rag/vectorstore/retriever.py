@@ -6,7 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 from sentence_transformers import SentenceTransformer
 
-from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL
+from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL, QDRANT_URL, QDRANT_API_KEY
 
 BOOK_MAP = {
     "gen": "Genesis", "創": "Genesis", "創世記": "Genesis",
@@ -21,7 +21,10 @@ BOOK_MAP = {
 class BibleRetriever:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.client = QdrantClient(path=str(DB_DIR))
+        if QDRANT_URL:
+            self.client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        else:
+            self.client = QdrantClient(path=str(DB_DIR))
         self.model = SentenceTransformer(EMBEDDING_MODEL, device=self.device)
 
     def close(self):
