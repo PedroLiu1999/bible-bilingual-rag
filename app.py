@@ -1,4 +1,5 @@
 # app.py
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -214,5 +215,6 @@ def health_check():
     return {"status": "ok"}
 
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
