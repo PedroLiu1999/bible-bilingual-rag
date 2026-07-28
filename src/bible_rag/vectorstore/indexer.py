@@ -3,19 +3,29 @@ import uuid
 
 import torch
 from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-from bible_rag.config import COLLECTION_NAME, DB_DIR, EMBEDDING_MODEL, PROCESSED_FILE, QDRANT_URL, QDRANT_API_KEY
+from bible_rag.config import (
+    COLLECTION_NAME,
+    DB_DIR,
+    EMBEDDING_MODEL,
+    PROCESSED_FILE,
+    QDRANT_API_KEY,
+    QDRANT_URL,
+)
+
 BATCH_SIZE = 512
+
 
 def run_indexing():
     if not PROCESSED_FILE.exists():
         raise FileNotFoundError(f"Missing {PROCESSED_FILE}. Run ingest first!")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f" Using execution device: {device.upper()}")
+    print(f"Using execution device: {device.upper()}")
 
     with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
         verses = json.load(f)
@@ -24,6 +34,7 @@ def run_indexing():
         client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
     else:
         client = QdrantClient(path=str(DB_DIR))
+
     model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
     if client.collection_exists(COLLECTION_NAME):
@@ -34,19 +45,51 @@ def run_indexing():
         vectors_config=VectorParams(size=768, distance=Distance.COSINE),
     )
 
+    # Payload Indexes for Qdrant Cloud Strict Mode Filtering
+    payload_indexes = [
+        ("book_code", models.PayloadSchemaType.KEYWORD),
+        ("book_name_en", models.PayloadSchemaType.KEYWORD),
+        ("book_name_zh", models.PayloadSchemaType.KEYWORD),
+        ("chapter", models.PayloadSchemaType.INTEGER),
+        ("verse", models.PayloadSchemaType.INTEGER),
+    ]
+
+    for field_name, field_schema in payload_indexes:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name=field_name,
+            field_schema=field_schema,
+        )
+
     for i in tqdm(range(0, len(verses), BATCH_SIZE), desc="Indexing Batches"):
         batch = verses[i : i + BATCH_SIZE]
-        documents = [f"{v['book_name_en']} {v['chapter']}:{v['verse']} | {v['text_kjv']} | {v['text_cuv']}" for v in batch]
-        embeddings = model.encode(documents, batch_size=BATCH_SIZE, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
+        documents = [
+            f"{v['book_name_en']} {v['chapter']}:{v['verse']} | {v['text_kjv']} | {v['text_cuv']}"
+            for v in batch
+        ]
+        embeddings = model.encode(
+            documents,
+            batch_size=BATCH_SIZE,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
 
         points = []
-        for idx, (verse_data, vector) in enumerate(zip(batch, embeddings)):
+        for verse_data, vector in zip(batch, embeddings):
             point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, verse_data["id"]))
-            points.append(PointStruct(id=point_id, vector=vector.tolist(), payload=verse_data))
+            points.append(
+                PointStruct(
+                    id=point_id, vector=vector.tolist(), payload=verse_data
+                )
+            )
 
         client.upsert(collection_name=COLLECTION_NAME, points=points)
 
-    print(f"\n Successfully indexed {len(verses)} verses into Qdrant using {device.upper()}!")
+    print(
+        f"\nSuccessfully indexed {len(verses)} verses into Qdrant using {device.upper()}!"
+    )
+
 
 if __name__ == "__main__":
     run_indexing()
