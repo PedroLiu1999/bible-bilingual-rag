@@ -63,7 +63,7 @@ class BibleRAGAgent:
         self.graph = self._build_graph()
 
     def _retrieve_node(self, state: AgentState) -> dict[str, Any]:
-        verses = self.retriever.retrieve(state["query"], top_k=3)
+        verses = self.retriever.retrieve(state["query"], top_k=10)
         return {"retrieved_verses": verses}
 
     def _generate_node(self, state: AgentState) -> dict[str, Any]:
