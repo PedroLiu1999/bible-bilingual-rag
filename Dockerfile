@@ -21,4 +21,4 @@ RUN uv pip install -e .
 EXPOSE 8000
 
 # Start FastAPI application with uvicorn
-CMD ["uv", "run", "python", "app.py"]
+CMD ["sh", "-c", "uv run uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]
